@@ -235,6 +235,21 @@ export function runForecast(
   const safeHistory = history.length > 0 ? history : [{ t: Date.now(), price: 100, volume: 0 }];
   const currentPrice = safeHistory[safeHistory.length - 1].price;
 
+  // Defensive sanity check: if SMA20 has drifted too far from the current
+  // price, the mean-reversion signal will be misleading. This catches
+  // data-wiring regressions (e.g. history not anchored to current price)
+  // instead of silently producing a bad forecast.
+  const prices = safeHistory.map((p) => p.price);
+  const sma20 = sma(prices, 20);
+  if (currentPrice > 0) {
+    const deviation = Math.abs(sma20 - currentPrice) / currentPrice;
+    if (deviation > 0.15) {
+      console.warn(
+        `[PulseMarket] SMA20 deviation exceeds 15% — sma20=${sma20.toFixed(2)}, currentPrice=${currentPrice.toFixed(2)}, deviation=${(deviation * 100).toFixed(1)}%. Check history data wiring.`,
+      );
+    }
+  }
+
   const tech = technicalForecast(safeHistory, steps, stepMs);
   const sent = sentimentForecast(safeHistory, news, steps, stepMs, overrides);
 

@@ -41,7 +41,14 @@ export async function fetchQuote(symbol: string): Promise<QuoteData | null> {
     if (!res.ok) return null;
     const d = await res.json();
     if (!d || typeof d.c !== 'number' || d.c === 0) return null;
-    const profile = await fetchProfile(symbol, key);
+    const [profile, metrics] = await Promise.all([
+      fetchProfile(symbol, key),
+      fetchMetrics(symbol, key),
+    ]);
+    // Prefer real 52-week high/low from /stock/metric; fall back to
+    // profile2 values, then undefined (mock path fills synthetic values).
+    const week52High = metrics?.week52High ?? profile?.week52High;
+    const week52Low = metrics?.week52Low ?? profile?.week52Low;
     return {
       symbol: symbol.toUpperCase(),
       name: profile?.name ?? symbol.toUpperCase(),
@@ -54,9 +61,9 @@ export async function fetchQuote(symbol: string): Promise<QuoteData | null> {
       prevClose: d.pc,
       volume: 0,
       marketCap: profile?.marketCapitalization,
-      peRatio: profile?.peRatio,
-      week52High: profile?.week52High,
-      week52Low: profile?.week52Low,
+      peRatio: profile?.peRatio ?? metrics?.peRatio,
+      week52High,
+      week52Low,
       beta: profile?.beta,
     };
   } catch {
@@ -83,6 +90,29 @@ async function fetchProfile(symbol: string, key: string): Promise<{
       week52High: d.week52High,
       week52Low: d.week52Low,
       beta: d.beta,
+    };
+  } catch {
+    return null;
+  }
+}
+
+// Fetch real 52-week high/low and PE ratio from the /stock/metric endpoint.
+// Same token-param auth pattern as /quote — no custom headers, no CORS preflight.
+async function fetchMetrics(symbol: string, key: string): Promise<{
+  week52High?: number;
+  week52Low?: number;
+  peRatio?: number;
+} | null> {
+  try {
+    const res = await fetch(`${BASE}/stock/metric?symbol=${encodeURIComponent(symbol)}&metric=all&token=${key}`);
+    if (!res.ok) return null;
+    const d = await res.json();
+    const m = d?.metric;
+    if (!m) return null;
+    return {
+      week52High: typeof m['52WeekHigh'] === 'number' ? m['52WeekHigh'] : undefined,
+      week52Low: typeof m['52WeekLow'] === 'number' ? m['52WeekLow'] : undefined,
+      peRatio: typeof m.peNormalized === 'number' ? m.peNormalized : undefined,
     };
   } catch {
     return null;

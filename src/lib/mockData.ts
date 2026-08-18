@@ -58,6 +58,13 @@ export function getMockQuote(symbol: string): QuoteData {
   const current = +(base * (1 + (rand() - 0.5) * 0.04)).toFixed(2);
   const prevClose = +(base * (1 + (rand() - 0.5) * 0.02)).toFixed(2);
   const change = +(current - prevClose).toFixed(2);
+  // NOTE: These 52-week bounds are synthetic — derived from the hash-seeded
+  // pseudo-random base price, not real market data. They are internally
+  // consistent (current price always falls within the range), so the
+  // forecast engine's soft-clamp logic works correctly. When a real Finnhub
+  // API key is present, fetchQuote() replaces these with actual 52-week
+  // high/low from the /stock/metric endpoint. The synthetic values here
+  // are only a fallback for the no-key/mock-data path.
   const week52High = +(base * 1.25).toFixed(2);
   const week52Low = +(base * 0.72).toFixed(2);
   return {
